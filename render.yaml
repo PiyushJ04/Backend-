@@ -1,0 +1,95 @@
+services:
+  - type: web
+    name: ai-faculty-backend
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    disk:
+      name: uploads
+      mountPath: /app/uploads
+      sizeGB: 1
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-faculty-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: FIRST_ADMIN_USERNAME
+        value: admin
+      - key: FIRST_ADMIN_EMAIL
+        value: admin@example.com
+      - key: FIRST_ADMIN_PASSWORD
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "[]"
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: ai-faculty-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: ai-faculty-redis
+          property: connectionString
+      - key: HF_TOKEN
+        sync: false
+
+  - type: keyvalue
+    name: ai-faculty-redis
+    plan: starter
+    ipAllowList: []
+
+  - type: worker
+    name: ai-faculty-worker
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: celery -A app.core.celery_app.celery_app worker --loglevel=info
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: RUN_MIGRATIONS
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-faculty-db
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: ai-faculty-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: ai-faculty-redis
+          property: connectionString
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_USE_TLS
+        value: "true"
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: Admin Team
+
+databases:
+  - name: ai-faculty-db
+    databaseName: app
+    user: app
+    plan: basic-256mb
+    postgresMajorVersion: "16"
+    ipAllowList: []
