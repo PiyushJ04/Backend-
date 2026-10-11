@@ -7,9 +7,14 @@ Current milestone: **Phase 5B — Grounded RAG Reference Answer Pipeline**.
 This folder is deployable as its own repository. Push the contents of
 `backend/` to a Git repository, then in Render choose **New > Blueprint** and
 connect that repository. Render reads `render.yaml` to create the API, a
-Celery email worker, a PostgreSQL 16 database, and a Redis-compatible Key Value
-instance. The Docker image runs Alembic migrations and creates the initial
-admin on API startup.
+Celery email worker, and a Redis-compatible Key Value instance. The Docker
+image runs Alembic migrations and creates the initial admin on API startup.
+The PostgreSQL database is hosted separately on Neon.
+
+Set `DATABASE_URL` to your Neon PostgreSQL connection string on both the API
+and worker services. Keep the URL secret; include Neon’s required SSL setting
+(usually `sslmode=require`). The app accepts Neon’s `postgresql://` URL format.
+The initial deployment may ask for `DATABASE_URL` separately for each service.
 
 Before the first deploy, edit `render.yaml` and replace
 `admin@example.com` with the email address for the initial admin. Render
