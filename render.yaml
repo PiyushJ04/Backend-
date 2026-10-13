@@ -13,6 +13,8 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: ALLOWED_HOSTS
+        value: '["*.onrender.com"]'
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET_KEY
@@ -20,7 +22,7 @@ services:
       - key: FIRST_ADMIN_USERNAME
         value: admin
       - key: FIRST_ADMIN_EMAIL
-        value: admin@example.com
+        sync: false
       - key: FIRST_ADMIN_PASSWORD
         generateValue: true
       - key: CORS_ORIGINS
@@ -53,10 +55,22 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: ALLOWED_HOSTS
+        value: '["*.onrender.com"]'
       - key: RUN_MIGRATIONS
         value: "false"
       - key: DATABASE_URL
         sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: FIRST_ADMIN_USERNAME
+        value: admin
+      - key: FIRST_ADMIN_EMAIL
+        sync: false
+      - key: FIRST_ADMIN_PASSWORD
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "[]"
       - key: CELERY_BROKER_URL
         fromService:
           type: keyvalue
@@ -67,6 +81,8 @@ services:
           type: keyvalue
           name: ai-faculty-redis
           property: connectionString
+      - key: HF_TOKEN
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

@@ -32,3 +32,25 @@ def test_sufficient_native_text_skips_ocr():
     parser = PDFOCR(min_native_chars=20, min_native_words=4)
     text = "Abstraction hides implementation details from the user."
     assert parser._needs_ocr(text) is False
+
+
+def test_pdf_ocr_end_to_end_uses_injected_ocr_engine():
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "CamScanner")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    parser = PDFOCR(min_native_chars=40, min_native_words=8)
+
+    class FakeEngine:
+        def extract_text(self, image):
+            assert image.ndim == 3
+            return "Object oriented programming classes objects abstraction encapsulation"
+
+    parser._engine = FakeEngine()
+    pages = parser.extract_pages(pdf_bytes)
+
+    assert pages == [(1, "Object oriented programming classes objects abstraction encapsulation")]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any
 
 import fitz
@@ -41,21 +42,27 @@ class PaddleOCRService:
                 use_textline_orientation=False,
             )
         except TypeError:
-            return paddle_ocr_cls(lang=language, use_angle_cls=True)
+            return paddle_ocr_cls(
+                lang=language,
+                use_angle_cls=True,
+            )
 
     def extract_text(self, image: np.ndarray) -> str:
         try:
             if hasattr(self._ocr, "predict"):
                 result = self._ocr.predict(input=image)
                 return self._extract_v3_result(result)
+
             result = self._ocr.ocr(image, cls=True)
             return self._extract_legacy_result(result)
+
         except Exception as exc:
             raise OCRError(f"PaddleOCR failed: {exc}") from exc
 
     @classmethod
     def _extract_v3_result(cls, result: Any) -> str:
         texts: list[str] = []
+
         if result is None:
             return ""
 
@@ -70,6 +77,7 @@ class PaddleOCRService:
 
             if isinstance(payload, str):
                 import json
+
                 try:
                     payload = json.loads(payload)
                 except json.JSONDecodeError:
@@ -77,24 +85,33 @@ class PaddleOCRService:
 
             if isinstance(payload, dict):
                 payload = payload.get("res", payload)
+
                 rec_texts = payload.get("rec_texts", [])
                 rec_scores = payload.get("rec_scores", [])
+
                 for index, text in enumerate(rec_texts):
                     text = str(text).strip()
+
                     if not text:
                         continue
+
                     if rec_scores and index < len(rec_scores):
                         try:
                             if float(rec_scores[index]) < 0.30:
                                 continue
                         except (TypeError, ValueError):
                             pass
+
                     texts.append(text)
+
                 continue
+
             if isinstance(item, dict):
                 payload = item.get("res", item)
+
                 for text in payload.get("rec_texts", []):
                     text = str(text).strip()
+
                     if text:
                         texts.append(text)
 
@@ -103,14 +120,18 @@ class PaddleOCRService:
     @staticmethod
     def _extract_legacy_result(result: Any) -> str:
         texts: list[str] = []
+
         for page in result or []:
             if not page:
                 continue
+
             for line in page:
                 try:
                     text, score = line[1]
+
                     if float(score) >= 0.30 and str(text).strip():
                         texts.append(str(text).strip())
+
                 except (IndexError, TypeError, ValueError):
                     continue
 
@@ -132,7 +153,11 @@ class PDFOCR:
         self.dpi = dpi
         self.min_native_chars = min_native_chars
         self.min_native_words = min_native_words
+
+        # PaddleOCR/PaddleX must not be initialized concurrently.
+        # The PDFParser also reuses this PDFOCR instance across the process.
         self._engine: PaddleOCRService | None = None
+        self._engine_lock = threading.Lock()
 
     def extract_pages(self, pdf_bytes: bytes) -> list[tuple[int, str]]:
         pages: list[tuple[int, str]] = []
@@ -143,9 +168,13 @@ class PDFOCR:
 
                 if self._needs_ocr(native_text):
                     ocr_text = self._ocr_page(page)
-                    text = ocr_text if len(self._quality_text(ocr_text)) > len(
-                        self._quality_text(native_text)
-                    ) else native_text
+
+                    text = (
+                        ocr_text
+                        if len(self._quality_text(ocr_text))
+                        > len(self._quality_text(native_text))
+                        else native_text
+                    )
                 else:
                     text = native_text
 
@@ -156,6 +185,7 @@ class PDFOCR:
 
     def _needs_ocr(self, text: str) -> bool:
         normalized = self._quality_text(text)
+
         return (
             len(normalized) < self.min_native_chars
             or len(normalized.split()) < self.min_native_words
@@ -164,20 +194,40 @@ class PDFOCR:
     @staticmethod
     def _quality_text(text: str) -> str:
         return " ".join(
-            token for token in text.split()
+            token
+            for token in text.split()
             if any(char.isalnum() for char in token)
         )
 
     def _ocr_page(self, page: fitz.Page) -> str:
+        """OCR a PDF page using the lazily initialized shared engine."""
+
         if self._engine is None:
-            self._engine = PaddleOCRService(language=self.language)
+            with self._engine_lock:
+                if self._engine is None:
+                    self._engine = PaddleOCRService(
+                        language=self.language
+                    )
 
         scale = self.dpi / 72.0
         matrix = fitz.Matrix(scale, scale)
-        pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+
+        pixmap = page.get_pixmap(
+            matrix=matrix,
+            alpha=False,
+        )
 
         channels = pixmap.n
-        image = np.frombuffer(pixmap.samples, dtype=np.uint8)
-        image = image.reshape(pixmap.height, pixmap.width, channels)
+
+        image = np.frombuffer(
+            pixmap.samples,
+            dtype=np.uint8,
+        )
+
+        image = image.reshape(
+            pixmap.height,
+            pixmap.width,
+            channels,
+        )
 
         return self._engine.extract_text(image)

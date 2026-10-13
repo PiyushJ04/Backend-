@@ -28,8 +28,9 @@ def test_reference_agent_keeps_phase5a_manual_context_compatibility():
     class FakeLLM:
         def chat(self, **kwargs):
             return SimpleNamespace(
-                content='{"reference_answer":"Answer", "key_concepts":[], '
-                        '"expected_points":[], "limitations":[]}'
+                content='{"answers":[{"label":"a","question":"Define OOP.","marks":2,'
+                        '"answer":"OOP is a programming paradigm that organizes software around objects containing data and behavior. It supports abstraction, encapsulation, inheritance, and polymorphism, which help structure reusable and maintainable programs.",'
+                        '"key_concepts":["OOP"],"expected_points":["definition"],"limitations":[],"word_count":32}]}'
             )
 
     draft = ReferenceAnswerAgent(llm=FakeLLM()).generate(

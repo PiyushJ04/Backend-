@@ -1,54 +1,46 @@
-# AI Faculty Assistant — FastAPI Backend
+# Marklane Backend — FastAPI
 
-Current milestone: **Phase 5B — Grounded RAG Reference Answer Pipeline**.
+This standalone repository contains the backend used by the Marklane
+frontend.
 
 ## Deploy the standalone backend to Render
 
-This folder is deployable as its own repository. Push the contents of
-`backend/` to a Git repository, then in Render choose **New > Blueprint** and
-connect that repository. Render reads `render.yaml` to create the API, a
-Celery email worker, and a Redis-compatible Key Value instance. The Docker
-image runs Alembic migrations and creates the initial admin on API startup.
-The PostgreSQL database is hosted separately on Neon.
+The API is already connected to this repository. A push to `main` triggers a
+new web-service deploy. The Docker entrypoint applies Alembic migrations and
+seeds the first admin before starting Uvicorn. Do not point this deploy at the
+main full-stack repository.
 
-Set `DATABASE_URL` to your Neon PostgreSQL connection string on both the API
-and worker services. Keep the URL secret; include Neon’s required SSL setting
-(usually `sslmode=require`). The app accepts Neon’s `postgresql://` URL format.
-The initial deployment may ask for `DATABASE_URL` separately for each service.
+Keep `DATABASE_URL` set to the Neon PostgreSQL connection string. Keep it
+private and include Neon’s SSL option (usually `sslmode=require`). Neon must
+have the `vector` extension available for the RAG migrations.
 
-Before the first deploy, edit `render.yaml` and replace
-`admin@example.com` with the email address for the initial admin. Render
-generates `JWT_SECRET_KEY` and `FIRST_ADMIN_PASSWORD`; retrieve the generated
-admin password from the API service's environment settings and change it after
-the first login.
+Before deploying this backend version, verify the Render web service has:
 
-After the services are created:
+* `ENVIRONMENT=production`
+* `ALLOWED_HOSTS=["backend-pl8j.onrender.com"]` (use your exact Render host,
+  without `https://`)
+* `JWT_SECRET_KEY` set to a private random value of at least 32 characters
+* `FIRST_ADMIN_PASSWORD` set to a non-default value
+* `DATABASE_URL` set to the Neon connection string
 
-1. Set the API service's `CORS_ORIGINS` to a JSON array containing the exact
-   deployed frontend origin, for example `["https://your-frontend.onrender.com"]`.
-   The default empty list intentionally does not allow browser origins.
-2. Configure the worker's SMTP settings (`SMTP_HOST`, `SMTP_USERNAME`,
-   `SMTP_PASSWORD`, and `SMTP_FROM_EMAIL`) to enable first-time credential
-   emails.
-3. Set `HF_TOKEN` on the API service if you use the Hugging Face answer and
-   embedding features.
-4. Check the API service at `/api/v1/health`. Interactive API docs are disabled
-   when `ENVIRONMENT=production`.
+Set `CORS_ORIGINS` to the exact deployed frontend origin as a JSON array, for
+example `["https://your-project.vercel.app"]`. Until then, browser requests
+from the frontend will be blocked by CORS. Set `HF_TOKEN` on the API service
+only if using Hugging Face features; never commit it to Git.
 
-The API's persistent disk is mounted at `/app/uploads`, so uploaded PDFs
-survive service restarts and deploys. Back up this disk and the database
-separately. Render persistent disks and non-free service plans are required by
-this Blueprint; review Render's current pricing before deploying.
+The API persistent disk is mounted at `/app/uploads`; uploaded exam materials
+and staged student-answer PDFs are stored there. Back up the disk and database
+separately.
 
-For a manual Render setup, use the Docker runtime with this folder as the
-service root, `Dockerfile` as the Dockerfile, and `/api/v1/health` as the
-health-check path. Set `ENVIRONMENT=production`, a strong `JWT_SECRET_KEY`,
-`DATABASE_URL`, `CORS_ORIGINS`, and secure `FIRST_ADMIN_USERNAME`,
-`FIRST_ADMIN_EMAIL`, and `FIRST_ADMIN_PASSWORD` values before the first
-startup; attach a persistent disk at `/app/uploads`. Run a separate worker with command
-`celery -A app.core.celery_app.celery_app worker --loglevel=info` and
-`RUN_MIGRATIONS=false`, and configure both services with the same Redis URL
-for `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND`.
+Student-answer OCR and evaluation run as background Celery jobs. They require
+a Redis-compatible broker (`CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND`)
+and a running Celery worker. The `render.yaml` Blueprint describes the
+required Key Value and worker services. The current API stores uploaded PDFs
+on its persistent disk; Render disks are not shared between services, so
+background answer processing needs shared object storage before it can work
+reliably across separate API and worker services. Health is available at
+`/api/v1/health`; `/api/v1/health/ready` also checks database and Redis
+connectivity.
 
 ## Completed phases
 

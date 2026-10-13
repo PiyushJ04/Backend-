@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
+from app.core.config import settings
 from app.services.ai.embedding import EmbeddingService
 
 
@@ -49,9 +50,15 @@ class KnowledgeRetrievalService:
         *,
         exam_id: str,
         query: str,
-        top_k: int = 5,
-        min_similarity: float = 0.15,
+        top_k: int | None = None,
+        min_similarity: float | None = None,
     ) -> list[RetrievedChunk]:
+        if not query.strip():
+            raise ValueError("query must not be empty")
+        top_k = top_k if top_k is not None else settings.rag_top_k
+        min_similarity = (
+            min_similarity if min_similarity is not None else settings.rag_min_similarity
+        )
         query_vector = self.embedding_service.embed_query(query)
 
         distance = Chunk.embedding.cosine_distance(query_vector).label("distance")

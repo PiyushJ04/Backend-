@@ -2,7 +2,7 @@ import secrets
 from functools import lru_cache
 from typing import List
 
-from pydantic import EmailStr, field_validator
+from pydantic import EmailStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,24 +19,20 @@ class Settings(BaseSettings):
     environment: str = "development"  # development | staging | production
     api_v1_prefix: str = "/api/v1"
     cors_origins: List[str] = ["http://localhost:5173"]
+    allowed_hosts: List[str] = ["localhost", "127.0.0.1"]
+    max_request_body_bytes: int = 120 * 1024 * 1024
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = 120
+    auth_rate_limit_per_minute: int = 10
 
     # --- database ---
     # Production: postgresql+psycopg2://user:pass@host:5432/dbname
     # PostgreSQL is mandatory for this application.
     database_url: str = "postgresql+psycopg2://app:app@localhost:5432/app"
 
-    @field_validator("database_url", mode="before")
-    @classmethod
-    def _normalize_database_url(cls, value: str) -> str:
-        if value.startswith("postgres://"):
-            return value.replace("postgres://", "postgresql+psycopg2://", 1)
-        if value.startswith("postgresql://"):
-            return value.replace("postgresql://", "postgresql+psycopg2://", 1)
-        return value
-
     # --- auth / jwt ---
     # MUST be overridden in production via env var JWT_SECRET_KEY.
-    jwt_secret_key: str = secrets.token_urlsafe(32)
+    jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
@@ -79,11 +75,39 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: float = 60.0
     rag_top_k: int = 5
     rag_min_similarity: float = 0.15
+    rag_chunk_size: int = 400
+    rag_chunk_overlap: int = 60
     # --- OCR for scanned PDFs ---
     ocr_language: str = "en"
     ocr_dpi: int = 180
     ocr_min_native_chars: int = 40
     ocr_min_native_words: int = 8
+
+    @model_validator(mode="before")
+    @classmethod
+    def _prepare_secret(cls, data):
+        data = dict(data or {})
+        environment = data.get("environment", "development")
+        if environment == "production" and not data.get("jwt_secret_key"):
+            raise ValueError("JWT_SECRET_KEY must be explicitly configured in production")
+        if environment != "production" and not data.get("jwt_secret_key"):
+            data["jwt_secret_key"] = secrets.token_urlsafe(32)
+        return data
+
+    @model_validator(mode="after")
+    def _validate_production_security(self):
+        if self.is_production:
+            if not self.jwt_secret_key or self.jwt_secret_key == "change-me-to-a-real-random-secret":
+                raise ValueError("JWT_SECRET_KEY must be explicitly configured in production")
+            if len(self.jwt_secret_key) < 32:
+                raise ValueError("JWT_SECRET_KEY must be at least 32 characters in production")
+            if "*" in self.cors_origins:
+                raise ValueError("Wildcard CORS origins are forbidden in production")
+            if not self.allowed_hosts:
+                raise ValueError("ALLOWED_HOSTS must be configured in production")
+            if self.first_admin_password == "ChangeMe123!":
+                raise ValueError("FIRST_ADMIN_PASSWORD must be changed before production")
+        return self
 
     @field_validator("environment")
     @classmethod

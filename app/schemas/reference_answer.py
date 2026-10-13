@@ -14,8 +14,17 @@ class ReferenceEvidence(BaseModel):
     excerpt: str = Field(min_length=1)
 
 
+class ReferenceSubAnswer(BaseModel):
+    label: str = Field(min_length=1, max_length=10)
+    question: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+    marks: int = Field(ge=1)
+    word_count: int = Field(ge=0)
+
+
 class ReferenceAnswerDraft(BaseModel):
     reference_answer: str = Field(min_length=1)
+    sub_answers: list[ReferenceSubAnswer] = Field(default_factory=list)
     key_concepts: list[str] = Field(default_factory=list)
     expected_points: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
